@@ -51,7 +51,7 @@ class MainPublishingTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(_StopLoop):
                 await run()
 
-        return publisher, state
+        return publisher, state, processor
 
     async def test_run_publishes_with_photo_when_media_present(self):
         msg = SourceMessage(
@@ -64,7 +64,7 @@ class MainPublishingTests(unittest.IsolatedAsyncioTestCase):
             photo_file_id='abc',
         )
 
-        publisher, state = await self._run_once_with_message(msg)
+        publisher, state, _ = await self._run_once_with_message(msg)
 
         publisher.post_with_photo.assert_called_once()
         publisher.post.assert_not_called()
@@ -80,10 +80,27 @@ class MainPublishingTests(unittest.IsolatedAsyncioTestCase):
             has_photo=False,
         )
 
-        publisher, state = await self._run_once_with_message(msg)
+        publisher, state, _ = await self._run_once_with_message(msg)
 
         publisher.post.assert_called_once()
         publisher.post_with_photo.assert_not_called()
+        state.mark_processed.assert_called_once()
+
+    async def test_run_skips_marketing_messages(self):
+        msg = SourceMessage(
+            source_chat='@source',
+            message_id=3,
+            text='Подпишись и купи курс со скидкой',
+            date=datetime.now(timezone.utc),
+            url='https://t.me/source/3',
+            has_photo=False,
+        )
+
+        publisher, state, processor = await self._run_once_with_message(msg)
+
+        publisher.post.assert_not_called()
+        publisher.post_with_photo.assert_not_called()
+        processor.prepare.assert_not_called()
         state.mark_processed.assert_called_once()
 
 
