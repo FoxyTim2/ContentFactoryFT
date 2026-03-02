@@ -45,42 +45,12 @@ class OpenAIContentProcessor(ContentProcessor):
         self._model = model
 
     def prepare(self, text: str, source_url: str | None) -> PreparedPost:
-        prompt = (
-            "Ты редактор новостей от лица нашей группы. Перепиши текст на русском "
-            "(если уже русский — оставь русский), сохрани исходный смысл и факты без "
-            "добавления новых деталей. Формулировки должны быть краткими и понятными. "
-            "Верни СТРОГО JSON-объект вида {\"title\":\"...\",\"body\":\"...\"} "
-            "без markdown и дополнительных полей. Ограничения: title <= 90 символов, "
-            "body <= 1200 символов."
-        )
-
         try:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": text},
-                ],
-                temperature=0.2,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "prepared_post",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "title": {"type": "string"},
-                                "body": {"type": "string"},
-                            },
-                            "required": ["title", "body"],
-                            "additionalProperties": False,
-                        },
-                    },
-                },
-            )
-            raw = (response.choices[0].message.content or "").strip()
-            payload = self._parse_payload(raw)
+            payload = self._generate_payload(text)
+            try:
+                payload = self._proofread_payload(payload)
+            except Exception as exc:
+                logging.exception("OpenAI proofread failed, using generated payload: %s", exc)
             title, body = self._validate_and_trim_payload(payload)
         except Exception as exc:
             logging.exception("OpenAI prepare failed, using no-op fallback: %s", exc)
@@ -93,6 +63,61 @@ class OpenAIContentProcessor(ContentProcessor):
         body = self._append_source_line(body, source_url)
 
         return PreparedPost(title=title, body=body)
+
+    def _generate_payload(self, text: str) -> dict[str, object]:
+        prompt = (
+            "Ты редактор новостей от лица нашей группы. Перепиши текст на русском "
+            "(если уже русский — оставь русский), сохрани исходный смысл и факты без "
+            "добавления новых деталей. Формулировки должны быть краткими и понятными. "
+            "Верни СТРОГО JSON-объект вида {\"title\":\"...\",\"body\":\"...\"} "
+            "без markdown и дополнительных полей. Ограничения: title <= 90 символов, "
+            "body <= 1200 символов."
+        )
+
+        response = self._request_structured_json(prompt=prompt, user_content=text, temperature=0.2)
+        return self._parse_payload(response)
+
+    def _proofread_payload(self, payload: dict[str, object]) -> dict[str, object]:
+        prompt = (
+            "Ты корректор новостей. Исправь только орфографию, пунктуацию и явные "
+            "стилистические шероховатости в title и body. Не меняй факты, смысл, "
+            "структуру и ссылки. Если в body есть блок 'Источник: ...', обязательно "
+            "сохрани его без удаления и искажения. Верни СТРОГО JSON-объект "
+            "{\"title\":\"...\",\"body\":\"...\"} без markdown и дополнительных полей."
+        )
+        response = self._request_structured_json(
+            prompt=prompt,
+            user_content=json.dumps(payload, ensure_ascii=False),
+            temperature=0,
+        )
+        return self._parse_payload(response)
+
+    def _request_structured_json(self, prompt: str, user_content: str, temperature: float) -> str:
+        response = self._client.chat.completions.create(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=temperature,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "prepared_post",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "body": {"type": "string"},
+                        },
+                        "required": ["title", "body"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+        )
+        return (response.choices[0].message.content or "").strip()
 
     @classmethod
     def _validate_and_trim_payload(cls, payload: dict[str, object]) -> tuple[str, str]:
