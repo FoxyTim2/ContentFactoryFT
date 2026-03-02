@@ -37,6 +37,11 @@ cp .env.example .env
 - `TG_TARGET_CHAT` (ваш канал/чат),
 - `OPENAI_API_KEY` (необязательно; без него будет пересылка без LLM-редактуры).
 
+Дополнительно для режима аналитики:
+- `ANALYTICS_MODE=true` — включает отдельный pipeline модерации,
+- `TG_MODERATION_CHAT` — чат/канал, куда уходят черновики,
+- публикация в `TG_TARGET_CHAT` идёт только после команды `/approve <source_chat> <message_id>` в модерационном чате.
+
 4. Запуск.
 
 **macOS / Linux (bash/zsh):**
@@ -52,6 +57,7 @@ python -m newsbot.main
 
 ## Файлы
 - `src/newsbot/main.py` — основной polling pipeline.
+- `src/newsbot/analytics_pipeline.py` — отдельный pipeline для аналитических черновиков и approve-команд.
 - `src/newsbot/telegram_client.py` — чтение сообщений из Telegram-каналов.
 - `src/newsbot/llm.py` — перевод/редактура контента (OpenAI + fallback).
 - `src/newsbot/publisher.py` — отправка в Telegram Bot API.

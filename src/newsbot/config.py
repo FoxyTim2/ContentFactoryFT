@@ -18,6 +18,8 @@ class Settings:
     openai_api_key: str | None
     openai_model: str
     state_db_path: str
+    analytics_mode: bool
+    tg_moderation_chat: str | None
 
 
 
@@ -49,6 +51,8 @@ def load_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY") or None,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         state_db_path=os.getenv("STATE_DB_PATH", "state.db"),
+        analytics_mode=_bool_env("ANALYTICS_MODE", False),
+        tg_moderation_chat=os.getenv("TG_MODERATION_CHAT") or None,
     )
 
 
@@ -58,3 +62,10 @@ def _required(name: str) -> str:
     if not value:
         raise ValueError(f"{name} is required")
     return value
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}

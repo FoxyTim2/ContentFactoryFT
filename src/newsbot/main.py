@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from newsbot.analytics_pipeline import run_analytics_mode
 from newsbot.config import load_settings
 from newsbot.llm import NoOpContentProcessor, OpenAIContentProcessor
 from newsbot.publisher import TelegramBotPublisher
@@ -18,6 +19,11 @@ logging.basicConfig(
 
 async def run() -> None:
     settings = load_settings()
+
+    if settings.analytics_mode:
+        logging.info("ANALYTICS_MODE=true, running analytics moderation pipeline")
+        await run_analytics_mode(settings)
+        return
 
     reader = TelegramSourceReader(
         api_id=settings.tg_api_id,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
 from telethon.tl.custom.message import Message
 
@@ -25,7 +25,7 @@ class TelegramSourceReader:
     async def fetch_recent_messages(
         self, channels: list[str], lookback_hours: int
     ) -> list[SourceMessage]:
-        min_date = datetime.now(UTC) - timedelta(hours=lookback_hours)
+        min_date = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         results: list[SourceMessage] = []
 
         for channel in channels:
@@ -42,7 +42,7 @@ class TelegramSourceReader:
                         source_chat=channel,
                         message_id=message.id,
                         text=message.text,
-                        date=message.date or datetime.now(UTC),
+                        date=message.date or datetime.now(timezone.utc),
                         url=_message_url(channel, message.id),
                     )
                 )
