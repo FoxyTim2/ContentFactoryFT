@@ -6,6 +6,7 @@ import logging
 from newsbot.analytics_pipeline import run_analytics_mode
 from newsbot.config import load_settings
 from newsbot.llm import NoOpContentProcessor, OpenAIContentProcessor
+from newsbot.moderation import MarketingModerator, NoOpMarketingClassifier, OpenAIMarketingClassifier
 from newsbot.publisher import TelegramBotPublisher
 from newsbot.state import MessageKey, StateStore
 from newsbot.telegram_client import TelegramSourceReader
@@ -52,6 +53,24 @@ async def run() -> None:
         processor = NoOpContentProcessor()
         logging.info("OPENAI_API_KEY not set, using no-op processor")
 
+    if settings.openai_api_key:
+        try:
+            moderation_classifier = OpenAIMarketingClassifier(
+                api_key=settings.openai_api_key,
+                model=settings.openai_model,
+            )
+            logging.info("OpenAI moderation classifier enabled")
+        except Exception as exc:
+            moderation_classifier = NoOpMarketingClassifier()
+            logging.exception(
+                "OpenAI moderation unavailable, falling back to no-op classifier: %s",
+                exc,
+            )
+    else:
+        moderation_classifier = NoOpMarketingClassifier()
+
+    moderator = MarketingModerator(classifier=moderation_classifier)
+
     while True:
         try:
             messages = await reader.fetch_recent_messages(
@@ -71,6 +90,17 @@ async def run() -> None:
                 continue
 
             try:
+                moderation_decision = moderator.is_marketing(msg.text)
+                if moderation_decision.is_marketing:
+                    logging.info(
+                        "Skipped marketing message %s:%s, reason=%s",
+                        msg.source_chat,
+                        msg.message_id,
+                        moderation_decision.reason,
+                    )
+                    state.mark_processed(key)
+                    continue
+
                 prepared = processor.prepare(msg.text, msg.url)
                 final_text = f"{prepared.title}\n\n{prepared.body}"
 
