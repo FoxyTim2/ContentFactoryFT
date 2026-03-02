@@ -53,13 +53,19 @@ class OpenAIContentProcessor(ContentProcessor):
                 {"role": "user", "content": text},
             ]
 
-            if hasattr(self._client, "responses"):
-                response = self._client.responses.create(
-                    model=self._model,
-                    input=messages,
-                )
-                raw = (getattr(response, "output_text", "") or "").strip()
-            else:
+            raw = ""
+            responses_api = getattr(self._client, "responses", None)
+            if responses_api and hasattr(responses_api, "create"):
+                try:
+                    response = responses_api.create(
+                        model=self._model,
+                        input=messages,
+                    )
+                    raw = (getattr(response, "output_text", "") or "").strip()
+                except Exception:
+                    logging.exception("OpenAI responses API failed, retrying via chat.completions")
+
+            if not raw:
                 response = self._client.chat.completions.create(
                     model=self._model,
                     messages=messages,
