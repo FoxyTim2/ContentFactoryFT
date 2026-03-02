@@ -8,11 +8,19 @@ Telegram-only бот для мониторинга выбранных канал
 
 ## Быстрый старт
 
-1. Установите зависимости:
+1. Установите зависимости.
 
+**macOS / Linux (bash/zsh):**
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Windows PowerShell:**
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
@@ -29,10 +37,17 @@ cp .env.example .env
 - `TG_TARGET_CHAT` (ваш канал/чат),
 - `OPENAI_API_KEY` (необязательно; без него будет пересылка без LLM-редактуры).
 
-4. Запуск:
+4. Запуск.
 
+**macOS / Linux (bash/zsh):**
 ```bash
 PYTHONPATH=src python -m newsbot.main
+```
+
+**Windows PowerShell:**
+```powershell
+$env:PYTHONPATH = "src"
+python -m newsbot.main
 ```
 
 ## Файлы

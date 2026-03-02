@@ -30,11 +30,18 @@ async def run() -> None:
     state = StateStore(settings.state_db_path)
 
     if settings.openai_api_key:
-        processor = OpenAIContentProcessor(
-            api_key=settings.openai_api_key,
-            model=settings.openai_model,
-        )
-        logging.info("OpenAI processor enabled")
+        try:
+            processor = OpenAIContentProcessor(
+                api_key=settings.openai_api_key,
+                model=settings.openai_model,
+            )
+            logging.info("OpenAI processor enabled")
+        except Exception as exc:
+            processor = NoOpContentProcessor()
+            logging.exception(
+                "OpenAI processor unavailable, falling back to no-op processor: %s",
+                exc,
+            )
     else:
         processor = NoOpContentProcessor()
         logging.info("OPENAI_API_KEY not set, using no-op processor")
