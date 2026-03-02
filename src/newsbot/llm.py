@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import logging
 
 try:
     from openai import OpenAI
@@ -45,23 +47,33 @@ class OpenAIContentProcessor(ContentProcessor):
             '{"title":"...","body":"..."}. Заголовок до 90 символов, тело до 1200 символов.'
         )
 
-        response = self._client.responses.create(
-            model=self._model,
-            input=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": text},
-            ],
-        )
-        raw = response.output_text
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": text},
+                ],
+                temperature=0.2,
+            )
+            raw = (response.choices[0].message.content or "").strip()
+            if raw.startswith("```"):
+                raw = raw.strip("`")
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
+            payload = json.loads(raw)
+            title = str(payload.get("title", "Новость")).strip() or "Новость"
+            body = str(payload.get("body", "")).strip()
+        except Exception as exc:
+            logging.exception("OpenAI prepare failed, using no-op fallback: %s", exc)
+            excerpt = text.strip()
+            if len(excerpt) > 900:
+                excerpt = excerpt[:900] + "..."
+            title = "Новость из отслеживаемого канала"
+            body = excerpt
 
-        import json
-
-        payload = json.loads(raw)
-        body = payload.get("body", "").strip()
         if source_url:
             body = f"{body}\n\nИсточник: {source_url}"
 
-        return PreparedPost(
-            title=payload.get("title", "Новость"),
-            body=body,
-        )
+        return PreparedPost(title=title, body=body)

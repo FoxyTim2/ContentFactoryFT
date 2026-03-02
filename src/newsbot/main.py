@@ -30,11 +30,18 @@ async def run() -> None:
     state = StateStore(settings.state_db_path)
 
     if settings.openai_api_key:
-        processor = OpenAIContentProcessor(
-            api_key=settings.openai_api_key,
-            model=settings.openai_model,
-        )
-        logging.info("OpenAI processor enabled")
+        try:
+            processor = OpenAIContentProcessor(
+                api_key=settings.openai_api_key,
+                model=settings.openai_model,
+            )
+            logging.info("OpenAI processor enabled")
+        except Exception as exc:
+            processor = NoOpContentProcessor()
+            logging.exception(
+                "OpenAI processor unavailable, falling back to no-op processor: %s",
+                exc,
+            )
     else:
         processor = NoOpContentProcessor()
         logging.info("OPENAI_API_KEY not set, using no-op processor")
@@ -47,19 +54,29 @@ async def run() -> None:
             )
 
             messages.sort(key=lambda m: m.date)
+        except Exception as exc:
+            logging.exception("Cycle fetch failed: %s", exc)
+            await asyncio.sleep(settings.poll_interval_seconds)
+            continue
 
-            for msg in messages:
-                key = MessageKey(source_chat=msg.source_chat, message_id=msg.message_id)
-                if state.is_processed(key):
-                    continue
+        for msg in messages:
+            key = MessageKey(source_chat=msg.source_chat, message_id=msg.message_id)
+            if state.is_processed(key):
+                continue
 
+            try:
                 prepared = processor.prepare(msg.text, msg.url)
                 final_text = f"{prepared.title}\n\n{prepared.body}"
                 publisher.post(settings.tg_target_chat, final_text)
                 state.mark_processed(key)
                 logging.info("Posted message %s:%s", msg.source_chat, msg.message_id)
-        except Exception as exc:
-            logging.exception("Cycle failed: %s", exc)
+            except Exception as exc:
+                logging.exception(
+                    "Failed processing message %s:%s: %s",
+                    msg.source_chat,
+                    msg.message_id,
+                    exc,
+                )
 
         await asyncio.sleep(settings.poll_interval_seconds)
 
