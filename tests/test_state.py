@@ -18,6 +18,18 @@ class StateStoreTests(unittest.TestCase):
             store.mark_processed(key)
             self.assertTrue(store.is_processed(key))
 
+    def test_pending_approval_flow(self):
+        with tempfile.NamedTemporaryFile() as tmp:
+            store = StateStore(tmp.name)
+            key = MessageKey(source_chat='@source', message_id=7)
+
+            store.mark_pending_approval(key, 'draft text')
+            self.assertTrue(store.is_processed(key))
+            self.assertEqual(store.get_pending_text(key), 'draft text')
+
+            store.mark_processed(key)
+            self.assertIsNone(store.get_pending_text(key))
+
 
 if __name__ == '__main__':
     unittest.main()
