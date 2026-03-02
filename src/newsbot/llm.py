@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from openai import OpenAI
+
+try:
+    from openai import OpenAI
+except ImportError:  # optional dependency at runtime
+    OpenAI = None
 
 
 @dataclass(frozen=True)
@@ -29,6 +33,8 @@ class NoOpContentProcessor(ContentProcessor):
 
 class OpenAIContentProcessor(ContentProcessor):
     def __init__(self, api_key: str, model: str) -> None:
+        if OpenAI is None:
+            raise RuntimeError("openai package is required for OpenAIContentProcessor")
         self._client = OpenAI(api_key=api_key)
         self._model = model
 
