@@ -73,7 +73,17 @@ async def run() -> None:
             try:
                 prepared = processor.prepare(msg.text, msg.url)
                 final_text = f"{prepared.title}\n\n{prepared.body}"
-                publisher.post(settings.tg_target_chat, final_text)
+
+                if msg.has_photo and (msg.photo_file_id or msg.photo_bytes):
+                    publisher.post_with_photo(
+                        settings.tg_target_chat,
+                        final_text,
+                        photo_file_id=msg.photo_file_id,
+                        photo_bytes=msg.photo_bytes,
+                    )
+                else:
+                    publisher.post(settings.tg_target_chat, final_text)
+
                 state.mark_processed(key)
                 logging.info("Posted message %s:%s", msg.source_chat, msg.message_id)
             except Exception as exc:
