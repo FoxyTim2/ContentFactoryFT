@@ -80,6 +80,48 @@ class PostStructureTests(unittest.TestCase):
         self.assertEqual(final_text.count('Источник:'), 1)
         self.assertEqual(final_text, 'Заголовок\n\nТело поста\n\nИсточник: https://t.me/a/1')
 
+    def test_proofread_keeps_source_block(self):
+        payload = {
+            'title': 'Заголовок  без пунктуации',
+            'body': 'Тело поста\n\nИсточник: https://t.me/a/1',
+        }
+
+        def fake_request(*, prompt: str, user_content: str, temperature: float) -> str:
+            self.assertIn('Исправь только орфографию, пунктуацию', prompt)
+            self.assertEqual(temperature, 0)
+            self.assertIn('Источник: https://t.me/a/1', user_content)
+            return (
+                '{"title":"Заголовок, без пунктуации.",'
+                '"body":"Тело поста.\\n\\nИсточник: https://t.me/a/1"}'
+            )
+
+        processor = OpenAIContentProcessor.__new__(OpenAIContentProcessor)
+        processor._request_structured_json = fake_request  # type: ignore[method-assign]
+
+        proofread = processor._proofread_payload(payload)
+
+        self.assertEqual(proofread['body'].count('Источник:'), 1)
+        self.assertIn('Источник: https://t.me/a/1', proofread['body'])
+
+    def test_prepare_uses_generated_payload_when_proofread_fails(self):
+        processor = OpenAIContentProcessor.__new__(OpenAIContentProcessor)
+
+        processor._generate_payload = lambda text: {  # type: ignore[method-assign]
+            'title': 'Сгенерированный заголовок',
+            'body': 'Сгенерированное тело',
+        }
+
+        def fail_proofread(payload):
+            raise RuntimeError('proofread unavailable')
+
+        processor._proofread_payload = fail_proofread  # type: ignore[method-assign]
+
+        post = processor.prepare('ignored', 'https://t.me/a/1')
+
+        self.assertEqual(post.title, 'Сгенерированный заголовок')
+        self.assertIn('Сгенерированное тело', post.body)
+        self.assertIn('Источник: https://t.me/a/1', post.body)
+
 
 if __name__ == '__main__':
     unittest.main()
