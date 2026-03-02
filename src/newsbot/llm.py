@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import logging
+import re
 
 try:
     from openai import OpenAI
@@ -57,12 +58,7 @@ class OpenAIContentProcessor(ContentProcessor):
                 temperature=0.2,
             )
             raw = (response.choices[0].message.content or "").strip()
-            if raw.startswith("```"):
-                raw = raw.strip("`")
-                if raw.startswith("json"):
-                    raw = raw[4:]
-                raw = raw.strip()
-            payload = json.loads(raw)
+            payload = self._parse_payload(raw)
             title = str(payload.get("title", "Новость")).strip() or "Новость"
             body = str(payload.get("body", "")).strip()
         except Exception as exc:
@@ -77,3 +73,23 @@ class OpenAIContentProcessor(ContentProcessor):
             body = f"{body}\n\nИсточник: {source_url}"
 
         return PreparedPost(title=title, body=body)
+
+    @staticmethod
+    def _parse_payload(raw: str) -> dict[str, object]:
+        """Parse model output to JSON even when it comes wrapped in markdown/text."""
+        cleaned = raw.strip()
+        if not cleaned:
+            raise ValueError("OpenAI returned empty content")
+
+        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, flags=re.S)
+        if fence_match:
+            cleaned = fence_match.group(1)
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            # If model added comments before/after JSON, salvage the first JSON object.
+            object_match = re.search(r"\{.*\}", cleaned, flags=re.S)
+            if object_match:
+                return json.loads(object_match.group(0))
+            raise
