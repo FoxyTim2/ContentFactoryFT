@@ -35,6 +35,9 @@ class NoOpContentProcessor(ContentProcessor):
 
 
 class OpenAIContentProcessor(ContentProcessor):
+    MAX_TITLE_LENGTH = 90
+    MAX_BODY_LENGTH = 1200
+
     def __init__(self, api_key: str, model: str) -> None:
         if OpenAI is None:
             raise RuntimeError("openai package is required for OpenAIContentProcessor")
@@ -43,9 +46,12 @@ class OpenAIContentProcessor(ContentProcessor):
 
     def prepare(self, text: str, source_url: str | None) -> PreparedPost:
         prompt = (
-            "Ты редактор новостей. Переведи текст на русский (если уже русский — оставь), "
-            "слегка отредактируй для ясности без искажения фактов, и верни JSON формата "
-            '{"title":"...","body":"..."}. Заголовок до 90 символов, тело до 1200 символов.'
+            "Ты редактор новостей от лица нашей группы. Перепиши текст на русском "
+            "(если уже русский — оставь русский), сохрани исходный смысл и факты без "
+            "добавления новых деталей. Формулировки должны быть краткими и понятными. "
+            "Верни СТРОГО JSON-объект вида {\"title\":\"...\",\"body\":\"...\"} "
+            "без markdown и дополнительных полей. Ограничения: title <= 90 символов, "
+            "body <= 1200 символов."
         )
 
         try:
@@ -56,11 +62,26 @@ class OpenAIContentProcessor(ContentProcessor):
                     {"role": "user", "content": text},
                 ],
                 temperature=0.2,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "prepared_post",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "body": {"type": "string"},
+                            },
+                            "required": ["title", "body"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
             )
             raw = (response.choices[0].message.content or "").strip()
             payload = self._parse_payload(raw)
-            title = str(payload.get("title", "Новость")).strip() or "Новость"
-            body = str(payload.get("body", "")).strip()
+            title, body = self._validate_and_trim_payload(payload)
         except Exception as exc:
             logging.exception("OpenAI prepare failed, using no-op fallback: %s", exc)
             excerpt = text.strip()
@@ -69,10 +90,34 @@ class OpenAIContentProcessor(ContentProcessor):
             title = "Новость из отслеживаемого канала"
             body = excerpt
 
-        if source_url:
-            body = f"{body}\n\nИсточник: {source_url}"
+        body = self._append_source_line(body, source_url)
 
         return PreparedPost(title=title, body=body)
+
+    @classmethod
+    def _validate_and_trim_payload(cls, payload: dict[str, object]) -> tuple[str, str]:
+        if set(payload.keys()) != {"title", "body"}:
+            raise ValueError("OpenAI payload must contain only title and body")
+
+        title = str(payload["title"]).strip() or "Новость"
+        body = str(payload["body"]).strip()
+
+        if len(title) > cls.MAX_TITLE_LENGTH:
+            title = title[: cls.MAX_TITLE_LENGTH - 3].rstrip() + "..."
+        if len(body) > cls.MAX_BODY_LENGTH:
+            body = body[: cls.MAX_BODY_LENGTH - 3].rstrip() + "..."
+        return title, body
+
+    @staticmethod
+    def _append_source_line(body: str, source_url: str | None) -> str:
+        if not source_url:
+            return body
+
+        source_line = f"Источник: {source_url}"
+        cleaned = body.strip()
+        if cleaned.endswith(source_line):
+            return cleaned
+        return f"{cleaned}\n\n{source_line}" if cleaned else source_line
 
     @staticmethod
     def _parse_payload(raw: str) -> dict[str, object]:
