@@ -47,19 +47,29 @@ async def run() -> None:
             )
 
             messages.sort(key=lambda m: m.date)
+        except Exception as exc:
+            logging.exception("Cycle fetch failed: %s", exc)
+            await asyncio.sleep(settings.poll_interval_seconds)
+            continue
 
-            for msg in messages:
-                key = MessageKey(source_chat=msg.source_chat, message_id=msg.message_id)
-                if state.is_processed(key):
-                    continue
+        for msg in messages:
+            key = MessageKey(source_chat=msg.source_chat, message_id=msg.message_id)
+            if state.is_processed(key):
+                continue
 
+            try:
                 prepared = processor.prepare(msg.text, msg.url)
                 final_text = f"{prepared.title}\n\n{prepared.body}"
                 publisher.post(settings.tg_target_chat, final_text)
                 state.mark_processed(key)
                 logging.info("Posted message %s:%s", msg.source_chat, msg.message_id)
-        except Exception as exc:
-            logging.exception("Cycle failed: %s", exc)
+            except Exception as exc:
+                logging.exception(
+                    "Failed processing message %s:%s: %s",
+                    msg.source_chat,
+                    msg.message_id,
+                    exc,
+                )
 
         await asyncio.sleep(settings.poll_interval_seconds)
 
