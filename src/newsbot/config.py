@@ -18,7 +18,7 @@ class Settings:
     openai_api_key: str | None
     openai_model: str
     state_db_path: str
-
+    tg_review_chat: str | None
 
 
 def load_settings() -> Settings:
@@ -49,6 +49,7 @@ def load_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY") or None,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         state_db_path=os.getenv("STATE_DB_PATH", "state.db"),
+        tg_review_chat=os.getenv("TG_REVIEW_CHAT") or None,
     )
 
 
