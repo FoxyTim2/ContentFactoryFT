@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+from newsbot.migrations import run_migrations
+
 
 @dataclass(frozen=True)
 class MessageKey:
@@ -13,27 +15,7 @@ class MessageKey:
 class StateStore:
     def __init__(self, db_path: str) -> None:
         self._conn = sqlite3.connect(db_path)
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS processed_messages (
-                source_chat TEXT NOT NULL,
-                message_id INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'published',
-                prepared_text TEXT,
-                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (source_chat, message_id)
-            )
-            """
-        )
-        if not self._has_column("processed_messages", "status"):
-            self._conn.execute(
-                "ALTER TABLE processed_messages ADD COLUMN status TEXT NOT NULL DEFAULT 'published'"
-            )
-        if not self._has_column("processed_messages", "prepared_text"):
-            self._conn.execute(
-                "ALTER TABLE processed_messages ADD COLUMN prepared_text TEXT"
-            )
-        self._conn.commit()
+        run_migrations(self._conn)
 
     def is_processed(self, key: MessageKey) -> bool:
         cursor = self._conn.execute(
@@ -79,6 +61,3 @@ class StateStore:
             return None
         return row[0]
 
-    def _has_column(self, table: str, column: str) -> bool:
-        cursor = self._conn.execute(f"PRAGMA table_info({table})")
-        return any(row[1] == column for row in cursor.fetchall())
