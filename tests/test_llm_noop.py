@@ -1,6 +1,6 @@
 import unittest
 
-from newsbot.llm import NoOpContentProcessor
+from newsbot.llm import NoOpContentProcessor, OpenAIContentProcessor
 
 
 class NoOpContentProcessorTests(unittest.TestCase):
@@ -17,6 +17,23 @@ class NoOpContentProcessorTests(unittest.TestCase):
 
         self.assertTrue(post.body.endswith('...'))
         self.assertLessEqual(len(post.body), 903)
+
+
+class OpenAIContentProcessorParsingTests(unittest.TestCase):
+    def test_parse_payload_plain_json(self):
+        payload = OpenAIContentProcessor._parse_payload('{"title":"A","body":"B"}')
+        self.assertEqual(payload['title'], 'A')
+        self.assertEqual(payload['body'], 'B')
+
+    def test_parse_payload_markdown_fence(self):
+        payload = OpenAIContentProcessor._parse_payload('```json\n{"title":"A","body":"B"}\n```')
+        self.assertEqual(payload['title'], 'A')
+
+    def test_parse_payload_with_surrounding_text(self):
+        payload = OpenAIContentProcessor._parse_payload(
+            'Вот итог:\n{"title":"A","body":"B"}\nСпасибо!'
+        )
+        self.assertEqual(payload['body'], 'B')
 
 
 if __name__ == '__main__':
