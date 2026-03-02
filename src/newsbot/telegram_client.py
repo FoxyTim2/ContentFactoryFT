@@ -13,6 +13,9 @@ class SourceMessage:
     text: str
     date: datetime
     url: str | None
+    has_photo: bool = False
+    photo_file_id: str | None = None
+    photo_bytes: bytes | None = None
 
 
 class TelegramSourceReader:
@@ -37,6 +40,13 @@ class TelegramSourceReader:
                 if not message.text:
                     continue
 
+                photo = getattr(message, "photo", None)
+                photo_file_id = None
+                if photo is not None:
+                    photo_id = getattr(photo, "id", None)
+                    if photo_id is not None:
+                        photo_file_id = str(photo_id)
+
                 results.append(
                     SourceMessage(
                         source_chat=channel,
@@ -44,6 +54,8 @@ class TelegramSourceReader:
                         text=message.text,
                         date=message.date or datetime.now(timezone.utc),
                         url=_message_url(channel, message.id),
+                        has_photo=photo is not None,
+                        photo_file_id=photo_file_id,
                     )
                 )
         return results
